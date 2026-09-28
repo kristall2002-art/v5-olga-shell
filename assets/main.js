@@ -44,26 +44,80 @@ document.querySelectorAll('.cnt').forEach(function(el){
   },.15);
 })();
 
-/* 4.1 — лента работ листается пальцем, соседние видны краями */
+/* галерея-кольцо: фото летят по кругу, прилетают из глубины */
 (function(){
-  var track=document.querySelector('#strip .track');if(!track)return;
-  onView(track,function(){
-    if(RM)return;
-    setTimeout(function(){track.scrollTo({left:110,behavior:'smooth'});},300);
-    setTimeout(function(){track.scrollTo({left:0,behavior:'smooth'});},1100);
-  },.4);
-  var x0=null,sl=0,moved=false;
-  track.addEventListener('mousedown',function(e){x0=e.clientX;sl=track.scrollLeft;moved=false;track.style.scrollSnapType='none';e.preventDefault();});
-  window.addEventListener('mousemove',function(e){if(x0===null)return;var d=e.clientX-x0;if(Math.abs(d)>5)moved=true;track.scrollLeft=sl-d;});
-  window.addEventListener('mouseup',function(){if(x0===null)return;x0=null;track.style.scrollSnapType='';});
-  var lb=document.getElementById('lb'),lbi=lb.querySelector('img');
-  track.querySelectorAll('figure').forEach(function(f){
-    f.addEventListener('click',function(){if(moved){moved=false;return;}
-      var im=f.querySelector('img');lbi.src=im.src;lbi.alt=im.alt;lb.classList.add('open');lb.setAttribute('aria-hidden','false');});
+  var wrap=document.getElementById('ring');if(!wrap)return;
+  var ring=wrap.querySelector('.ring'),figs=[].slice.call(ring.children),n=figs.length;
+  var step=360/n,rot=0,R=0,auto=!RM,drag=false,x0=0,r0=0,moved=0,vel=0,lastX=0,idleT;
+  function layout(){
+    var w=Math.max(150,Math.min(230,wrap.clientWidth*0.17));
+    wrap.style.setProperty('--iw',w+'px');
+    R=Math.round(w*n/(2*Math.PI)*1.3);
+    figs.forEach(function(f,i){f._a=step*i;});
+    paint();
+  }
+  function paint(){
+    ring.style.transform='translateZ('+(-R)+'px) rotateY('+rot+'deg)';
+    figs.forEach(function(f){
+      var a=((f._a+rot)%360+360)%360; if(a>180)a-=360;
+      var c=Math.cos(a*Math.PI/180);
+      f.style.transform='rotateY('+f._a+'deg) translateZ('+R+'px)';
+      f.style.opacity=(0.25+0.75*((c+1)/2)).toFixed(3);
+      f.style.zIndex=Math.round((c+1)*50);
+      f._front=Math.abs(a)<step/2;
+    });
+  }
+  function tick(){
+    if(!drag){
+      if(Math.abs(vel)>0.02){rot+=vel;vel*=0.94;}
+      else if(auto)rot-=0.09;
+      paint();
+    }
+    requestAnimationFrame(tick);
+  }
+  function pause(){auto=false;clearTimeout(idleT);idleT=setTimeout(function(){auto=!RM;},3500);}
+  wrap.addEventListener('pointerdown',function(e){drag=true;moved=0;x0=lastX=e.clientX;r0=rot;vel=0;pause();});
+  window.addEventListener('pointermove',function(e){if(!drag)return;var dx=e.clientX-x0;moved=Math.max(moved,Math.abs(dx));
+    vel=(e.clientX-lastX)*0.25;lastX=e.clientX;rot=r0+dx*0.25;paint();});
+  window.addEventListener('pointerup',function(e){
+    if(!drag)return;drag=false;
+    if(moved<6){var el=document.elementFromPoint(e.clientX,e.clientY),f=el&&el.closest?el.closest('.ring figure'):null;
+      if(f){var im=f.querySelector('img');openLb(im.src,im.alt);vel=0;}}
   });
-  function close(){lb.classList.remove('open');lb.setAttribute('aria-hidden','true');}
-  lb.addEventListener('click',close);
-  document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+  function turn(k){pause();vel=0;var target=rot+k*step,from=rot,t0=null;
+    function an(ts){if(t0===null)t0=ts;var p=Math.min(1,(ts-t0)/500);rot=from+(target-from)*(1-Math.pow(1-p,3));paint();if(p<1)requestAnimationFrame(an);}
+    requestAnimationFrame(an);}
+  document.getElementById('rPrev').addEventListener('click',function(){turn(1);});
+  document.getElementById('rNext').addEventListener('click',function(){turn(-1);});
+  wrap.addEventListener('keydown',function(e){if(e.key==='ArrowLeft')turn(1);if(e.key==='ArrowRight')turn(-1);});
+  window.addEventListener('resize',layout);
+  window.__ringLayout=layout;
+  layout();requestAnimationFrame(tick);
+  onView(wrap,function(){
+    figs.forEach(function(f,i){f.querySelector('.inner').style.transitionDelay=(i*70)+'ms';});
+    wrap.classList.add('go');
+  },.25);
+})();
+
+/* лайтбокс */
+var lb=document.getElementById('lb'),lbi=lb.querySelector('img');
+function openLb(src,alt){lbi.src=src;lbi.alt=alt||'';lb.classList.add('open');lb.setAttribute('aria-hidden','false');}
+function closeLb(){lb.classList.remove('open');lb.setAttribute('aria-hidden','true');}
+lb.addEventListener('click',closeLb);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeLb();});
+
+/* светлая / тёмная тема */
+document.getElementById('theme').addEventListener('click',function(){
+  var d=html.classList.toggle('dark');try{localStorage.setItem('os-theme',d?'dark':'light');}catch(e){}
+});
+
+/* крупнее / мельче */
+(function(){
+  var steps=['0.9','1','1.12','1.25'],cur=steps.indexOf(getComputedStyle(html).getPropertyValue('--zoom').trim()||'1');if(cur<0)cur=1;
+  function set(i){cur=Math.max(0,Math.min(steps.length-1,i));html.style.setProperty('--zoom',steps[cur]);
+    try{localStorage.setItem('os-zoom',steps[cur]);}catch(e){}if(window.__ringLayout)window.__ringLayout();}
+  document.getElementById('szUp').addEventListener('click',function(){set(cur+1);});
+  document.getElementById('szDown').addEventListener('click',function(){set(cur-1);});
 })();
 
 /* 6.1 — заливка кнопки слева направо по касанию */
